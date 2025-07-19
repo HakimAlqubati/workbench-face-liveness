@@ -68,3 +68,5 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+# workbench-face-liveness
+A React application for Face Liveness Detection using AWS Rekognition, fully integrated with a Laravel backend API. Provides secure identity verification and supports linking the verification result with user or employee records.
