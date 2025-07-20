@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { FaceLivenessDetector } from '@aws-amplify/ui-react-liveness';
 import { ThemeProvider, Loader } from '@aws-amplify/ui-react';
+import { API_BASE_URL } from "../config";
 import { Amplify } from 'aws-amplify';
 import '@aws-amplify/ui-react/styles.css';
-import awsExports from './aws-exports';
+import awsExports from '../aws-exports';
 
 Amplify.configure(awsExports);
 
-export default function App() {
+export default function FaceLivenessPage() {
   const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState(null);
@@ -19,7 +20,7 @@ export default function App() {
     setResult(null);
     setError(null);
     try {
-      const response = await fetch('http://localhost:8080/api/aws/employee-liveness/start-session', {
+      const response = await fetch(`${API_BASE_URL}/aws/employee-liveness/start-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
