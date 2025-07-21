@@ -1,7 +1,7 @@
 // src/App.js
 import React from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import FaceLivenessPage from "./pages/FaceLivenessPage";
+import LivenessCheck from "./pages/LivenessCheck";
 import AttendanceKeypadPage from "./pages/AttendanceKeypadPage";
 import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -116,7 +116,7 @@ export default function App() {
           path="/liveness"
           element={
             <ProtectedRoute>
-              <FaceLivenessPage />
+              <LivenessCheck />
             </ProtectedRoute>
           }
         />
