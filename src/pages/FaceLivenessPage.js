@@ -42,7 +42,7 @@ export default function FaceLivenessPage() {
     setLoading(true);
     try {
       const response = await fetch(
-        `http://localhost:8080/api/aws/employee-liveness/check-session?sessionId=${sessionId}`
+        `${API_BASE_URL}/aws/employee-liveness/check-session?sessionId=${sessionId}`
       );
       const data = await response.json();
       setResult(data);
