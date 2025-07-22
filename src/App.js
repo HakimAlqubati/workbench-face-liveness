@@ -5,6 +5,8 @@ import LivenessCheck from "./pages/LivenessCheck";
 import AttendanceKeypadPage from "./pages/AttendanceKeypadPage";
 import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
+import FaceVerificationPage from "./pages/FaceVerificationPage";
+import FaceRecognitionPage from './pages/FaceRecognitionPage';
 
 const PRIMARY_COLOR = "#0d7c66";
 const PRIMARY_GRADIENT = "linear-gradient(90deg, #0d7c66 70%, #21bfa5 100%)";
@@ -38,6 +40,51 @@ function HomePage() {
           gap: 18,
           marginBottom: 12
         }}>
+          
+            <Link
+            to="/recognize"
+            style={{
+              background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 17,
+              border: "none",
+              borderRadius: 11,
+              padding: "15px 0",
+              textDecoration: "none",
+              boxShadow: "0 2px 8px #0d7c6640",
+              letterSpacing: ".2px",
+              transition: "transform .13s,box-shadow .18s"
+            }}
+            onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+            onMouseUp={e => e.currentTarget.style.transform = ""}
+            onMouseLeave={e => e.currentTarget.style.transform = ""}
+          >
+            Face Recognition (Employee)
+          </Link>
+          
+          <Link
+          to="/face-verification"
+          style={{
+            background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
+            color: "#ffffffff",
+            fontWeight: 700,
+            fontSize: 17,
+            border: "none",
+            borderRadius: 11,
+            padding: "15px 0",
+            textDecoration: "none",
+            boxShadow: "0 2px 8px #0d7c6630",
+            letterSpacing: ".2px",
+            transition: "transform .13s,box-shadow .18s"
+          }}
+          onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+          onMouseUp={e => e.currentTarget.style.transform = ""}
+          onMouseLeave={e => e.currentTarget.style.transform = ""}
+        >
+          Face Verification
+        </Link>
+
           <Link
             to="/liveness"
             style={{
@@ -128,6 +175,15 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+        path="/face-verification"
+        element={
+          <ProtectedRoute>
+            <FaceVerificationPage />
+          </ProtectedRoute>
+        }
+        />
+      <Route path="/recognize" element={<ProtectedRoute><FaceRecognitionPage /></ProtectedRoute>} />
 
         {/* 404 Page */}
         <Route path="*" element={
