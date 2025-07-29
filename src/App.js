@@ -1,4 +1,3 @@
-// src/App.js
 import React from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import LivenessCheck from "./pages/LivenessCheck";
@@ -7,7 +6,8 @@ import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import FaceVerificationPage from "./pages/FaceVerificationPage";
 import FaceRecognitionPage from './pages/FaceRecognitionPage';
-import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; // هذا هو الملف الجديد
+import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; // new page
+import FaceCapturePage from "./pages/FaceCapturePage";
 
 const PRIMARY_COLOR = "#0d7c66";
 const PRIMARY_GRADIENT = "linear-gradient(90deg, #0d7c66 70%, #21bfa5 100%)";
@@ -33,8 +33,6 @@ function HomePage() {
         textAlign: "center",
         border: `2px solid #0d7c6615`
       }}>
-     
-        
         <div style={{
           display: "flex",
           flexDirection: "column",
@@ -43,85 +41,22 @@ function HomePage() {
         }}>
           
           <Link
-          to="/liveness-recognition"
-          style={{
-            background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 17,
-            border: "none",
-            borderRadius: 11,
-            padding: "15px 0",
-            textDecoration: "none",
-            boxShadow: "0 2px 8px #0d7c6640",
-            letterSpacing: ".2px",
-            transition: "transform .13s,box-shadow .18s"
-          }}
-          onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
-          onMouseUp={e => e.currentTarget.style.transform = ""}
-          onMouseLeave={e => e.currentTarget.style.transform = ""}
-        >
-          Liveness + Recognition
-        </Link>
-
-            <Link
-            to="/recognize"
-            style={{
-              background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 17,
-              border: "none",
-              borderRadius: 11,
-              padding: "15px 0",
-              textDecoration: "none",
-              boxShadow: "0 2px 8px #0d7c6640",
-              letterSpacing: ".2px",
-              transition: "transform .13s,box-shadow .18s"
-            }}
+            to="/liveness-recognition"
+            style={buttonStyle}
             onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
             onMouseUp={e => e.currentTarget.style.transform = ""}
             onMouseLeave={e => e.currentTarget.style.transform = ""}
           >
-            Face Recognition (Employee)
+            Liveness
           </Link>
 
-          <Link
-          to="/face-verification"
-          style={{
-            background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
-            color: "#ffffffff",
-            fontWeight: 700,
-            fontSize: 17,
-            border: "none",
-            borderRadius: 11,
-            padding: "15px 0",
-            textDecoration: "none",
-            boxShadow: "0 2px 8px #0d7c6630",
-            letterSpacing: ".2px",
-            transition: "transform .13s,box-shadow .18s"
-          }}
-          onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
-          onMouseUp={e => e.currentTarget.style.transform = ""}
-          onMouseLeave={e => e.currentTarget.style.transform = ""}
-        >
-          Face Verification
-        </Link>
+          
 
           <Link
             to="/keypad"
             style={{
-              background: "linear-gradient(90deg, #0d7c66 65%, #47e0bf 100%)",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 17,
-              border: "none",
-              borderRadius: 11,
-              padding: "15px 0",
-              textDecoration: "none",
-              boxShadow: "0 2px 8px #0d7c6630",
-              letterSpacing: ".2px",
-              transition: "transform .13s,box-shadow .18s"
+              ...buttonStyle,
+              background: "linear-gradient(90deg, #0d7c66 65%, #47e0bf 100%)"
             }}
             onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
             onMouseUp={e => e.currentTarget.style.transform = ""}
@@ -143,11 +78,32 @@ function HomePage() {
   );
 }
 
+const buttonStyle = {
+  background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: 17,
+  border: "none",
+  borderRadius: 11,
+  padding: "15px 0",
+  textDecoration: "none",
+  boxShadow: "0 2px 8px #0d7c6640",
+  letterSpacing: ".2px",
+  transition: "transform .13s,box-shadow .18s"
+};
+
 export default function App() {
   return (
     <BrowserRouter basename="/react-app">
       <Routes>
-        {/* Home Page: Protected */}
+        <Route
+          path="/face-capture"
+          element={
+            <ProtectedRoute>
+              <FaceCapturePage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/"
           element={
@@ -156,20 +112,15 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* Login Page */}
         <Route path="/login" element={<LoginPage />} />
-
-        {/* Protected Pages */}
         <Route
-        path="/liveness-recognition"
-        element={
-          <ProtectedRoute>
-            <FaceLivenessRecognition />
-          </ProtectedRoute>
-        }
-      />
-        
+          path="/liveness-recognition"
+          element={
+            <ProtectedRoute>
+              <FaceLivenessRecognition />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/keypad"
           element={
@@ -179,28 +130,36 @@ export default function App() {
           }
         />
         <Route
-        path="/face-verification"
-        element={
-          <ProtectedRoute>
-            <FaceVerificationPage />
-          </ProtectedRoute>
-        }
+          path="/face-verification"
+          element={
+            <ProtectedRoute>
+              <FaceVerificationPage />
+            </ProtectedRoute>
+          }
         />
-      <Route path="/recognize" element={<ProtectedRoute><FaceRecognitionPage /></ProtectedRoute>} />
-
-        {/* 404 Page */}
-        <Route path="*" element={
-          <div style={{
-            textAlign: 'center',
-            marginTop: '70px',
-            color: '#e3342f',
-            fontSize: 28,
-            fontWeight: 600,
-            fontFamily: 'system-ui,Roboto,sans-serif'
-          }}>
-            404 | Page Not Found
-          </div>
-        } />
+        <Route
+          path="/recognize"
+          element={
+            <ProtectedRoute>
+              <FaceRecognitionPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <div style={{
+              textAlign: 'center',
+              marginTop: '70px',
+              color: '#e3342f',
+              fontSize: 28,
+              fontWeight: 600,
+              fontFamily: 'system-ui,Roboto,sans-serif'
+            }}>
+              404 | Page Not Found
+            </div>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
