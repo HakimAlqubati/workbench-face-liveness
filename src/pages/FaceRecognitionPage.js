@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
-import {PYTHON_BASE_API} from '../config';
-const API_URL = `${PYTHON_BASE_API}/recognize`; 
+
+const API_URL = "https://54.251.132.76:5000/api/recognize-by-precise-match";
 
 export default function FaceRecognitionPage() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -39,11 +39,12 @@ export default function FaceRecognitionPage() {
         body: formData,
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error("Recognition failed.");
+        throw new Error(data?.error || "Recognition failed.");
       }
 
-      const data = await response.json();
       setResult(data);
     } catch (err) {
       setError(err.message || "Unknown error");
@@ -98,40 +99,20 @@ export default function FaceRecognitionPage() {
             {loading ? "Processing..." : "Recognize"}
           </button>
         </form>
+
         {error && (
           <div className="text-red-500 mt-3 text-center">{error}</div>
         )}
+
         {result && (
-          <div className="mt-7">
+          <div className="mt-7 text-center">
             {result.matched ? (
-              <div className="text-center">
-                <div className="flex flex-col items-center gap-3">
-                  <img
-                    src={result.employee.avatar_url}
-                    alt="Employee"
-                    className="h-20 w-20 rounded-full border shadow"
-                  />
-                  <div className="font-semibold text-lg">
-                    {result.employee.name}
-                  </div>
-                  <div className="text-gray-500 text-sm">
-                    Employee ID: {result.employee.employee_id}
-                  </div>
-                  <div className="text-green-600 font-bold">
-                    Matched &bull; Distance:{" "}
-                    <span className="font-mono">{result.distance.toFixed(5)}</span>
-                  </div>
-                </div>
+              <div className="text-green-700 font-semibold text-lg">
+                ✅ Matched: {result.best_match.employee_name}
               </div>
             ) : (
-              <div className="text-center text-red-600 font-semibold">
-                No matching employee found.<br />
-                Closest distance:{" "}
-                <span className="font-mono">
-                  {typeof result.distance === "number"
-                    ? result.distance.toFixed(5)
-                    : "N/A"}
-                </span>
+              <div className="text-red-600 font-semibold">
+                ❌ {result.message || "No match found."}
               </div>
             )}
           </div>

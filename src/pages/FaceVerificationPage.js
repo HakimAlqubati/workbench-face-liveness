@@ -111,23 +111,7 @@ export default function FaceVerificationPage() {
               )}
             </label>
           </div>
-          {/* <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <span style={{ color: "#8ea7a1", fontWeight: 600, fontSize: 15 }}>النموذج:</span>
-            <select value={model} onChange={e => setModel(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "7px 12px",
-                borderRadius: 9,
-                border: `1.5px solid #c2e8e2`,
-                fontWeight: 700,
-                fontSize: 16,
-                background: "#f8fcfb"
-              }}>
-              {modelOptions.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select> 
-          </div>*/}
+          
           <button
             type="submit"
             disabled={loading || !img1 || !img2}

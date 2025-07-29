@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import FaceVerificationPage from "./pages/FaceVerificationPage";
 import FaceRecognitionPage from './pages/FaceRecognitionPage';
+import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; // هذا هو الملف الجديد
 
 const PRIMARY_COLOR = "#0d7c66";
 const PRIMARY_GRADIENT = "linear-gradient(90deg, #0d7c66 70%, #21bfa5 100%)";
@@ -41,6 +42,28 @@ function HomePage() {
           marginBottom: 12
         }}>
           
+          <Link
+          to="/liveness-recognition"
+          style={{
+            background: "linear-gradient(90deg, #0d7c66 60%, #29e3d0 100%)",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: 17,
+            border: "none",
+            borderRadius: 11,
+            padding: "15px 0",
+            textDecoration: "none",
+            boxShadow: "0 2px 8px #0d7c6640",
+            letterSpacing: ".2px",
+            transition: "transform .13s,box-shadow .18s"
+          }}
+          onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+          onMouseUp={e => e.currentTarget.style.transform = ""}
+          onMouseLeave={e => e.currentTarget.style.transform = ""}
+        >
+          Liveness + Recognition
+        </Link>
+
             <Link
             to="/recognize"
             style={{
@@ -62,7 +85,7 @@ function HomePage() {
           >
             Face Recognition (Employee)
           </Link>
-          
+
           <Link
           to="/face-verification"
           style={{
@@ -85,27 +108,6 @@ function HomePage() {
           Face Verification
         </Link>
 
-          <Link
-            to="/liveness"
-            style={{
-              background: PRIMARY_GRADIENT,
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 17,
-              border: "none",
-              borderRadius: 11,
-              padding: "15px 0",
-              textDecoration: "none",
-              boxShadow: "0 2px 8px #0d7c6640",
-              letterSpacing: ".2px",
-              transition: "transform .13s,box-shadow .18s"
-            }}
-            onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
-            onMouseUp={e => e.currentTarget.style.transform = ""}
-            onMouseLeave={e => e.currentTarget.style.transform = ""}
-          >
-            Face Liveness (Camera)
-          </Link>
           <Link
             to="/keypad"
             style={{
@@ -160,13 +162,14 @@ export default function App() {
 
         {/* Protected Pages */}
         <Route
-          path="/liveness"
-          element={
-            <ProtectedRoute>
-              <LivenessCheck />
-            </ProtectedRoute>
-          }
-        />
+        path="/liveness-recognition"
+        element={
+          <ProtectedRoute>
+            <FaceLivenessRecognition />
+          </ProtectedRoute>
+        }
+      />
+        
         <Route
           path="/keypad"
           element={
