@@ -94,7 +94,7 @@ const buttonStyle = {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/react-app">
+    <BrowserRouter basename="/">
       <Routes>
         <Route
           path="/face-capture"

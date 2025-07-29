@@ -16,6 +16,7 @@ export default function LoginForm() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
+  const [showPassword, setShowPassword] = useState(false);
   const from = location.state?.from?.pathname || "/liveness";
 
   const handleSubmit = async (e) => {
@@ -151,20 +152,52 @@ export default function LoginForm() {
           }}
         />
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          className="rounded-lg px-4 py-2.5 border-2 bg-white/10 border-[#21e3b7] focus:ring-2 focus:ring-[#21e3b7] focus:outline-none text-base shadow-md transition placeholder:text-[#36d5c1] text-[#18b893] font-semibold"
-          required
-          style={{
-            letterSpacing: ".05em",
-            fontFamily,
-            fontSize: 15.5,
-            boxShadow: "0 0 7px #21e3b73c",
-          }}
-        />
+         <div style={{ position: "relative" }}>
+          <input
+            type={showPassword ? "text" : "password"}
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            className="rounded-lg px-4 py-2.5 pr-10 border-2 bg-white/10 border-[#21e3b7] focus:ring-2 focus:ring-[#21e3b7] focus:outline-none text-base shadow-md transition placeholder:text-[#36d5c1] text-[#18b893] font-semibold"
+            required
+            style={{
+              letterSpacing: ".05em",
+              fontFamily,
+              fontSize: 15.5,
+              boxShadow: "0 0 7px #21e3b73c",
+              width: "100%"
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            style={{
+              position: "absolute",
+              right: "10px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              outline: "none",
+            }}
+            aria-label="Toggle password visibility"
+          >
+            {showPassword ? (
+              // Eye Open Icon
+              <svg xmlns="http://www.w3.org/2000/svg" fill="#21e3b7" viewBox="0 0 24 24" width="22" height="22">
+                <path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 110-10 5 5 0 010 10z" />
+                <circle cx="12" cy="12" r="2.5" fill="#21e3b7"/>
+              </svg>
+            ) : (
+              // Eye Off Icon
+              <svg xmlns="http://www.w3.org/2000/svg" fill="#21e3b7" viewBox="0 0 24 24" width="22" height="22">
+                <path d="M12 5c-2.5 0-4.6 1-6.3 2.6L4 6.9 2.6 8.3l2.1 2.1C3.6 11.5 2.8 13.2 2 14.5c2.2 3.3 5.8 5.5 10 5.5 1.7 0 3.3-.3 4.8-.9l2.1 2.1 1.4-1.4-18-18L2 2l2.5 2.5C6.4 3.3 9 2 12 2c7 0 11 7 11 7s-.9 1.5-2.4 3.1l-1.4-1.4C20.6 9.3 21.6 8 21.6 8S17.6 5 12 5zm0 2a5 5 0 014.9 6.1l-6-6A4.9 4.9 0 0112 7zm-1.1 1.9l6.2 6.2c-.9.6-1.9 1-3.1 1a5 5 0 01-5-5c0-1.2.4-2.2 1-3.1z" />
+              </svg>
+            )}
+          </button>
+        </div>
 
         <button
           type="submit"

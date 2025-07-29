@@ -22,7 +22,7 @@ export default function FaceDetectionLiveness() {
 
   useEffect(() => {
     const loadModels = async () => {
-      const MODEL_URL = "/react-app/models";
+      const MODEL_URL = "/models";
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
       setModelsLoaded(true);
     };
