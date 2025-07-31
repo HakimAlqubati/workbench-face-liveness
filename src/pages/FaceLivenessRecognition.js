@@ -1,9 +1,8 @@
 import React, { useRef, useEffect, useState } from "react";
 import * as faceapi from "face-api.js";
-import { LOCAL_PYTHON_BASE_API } from "../config";
-
+import { API_BASE_URL, LOCAL_PYTHON_BASE_API } from "../config";
 const LIVENESS_API_URL = `${LOCAL_PYTHON_BASE_API}/liveness`;
-
+const FACE_RECOGNITION_API_URL = `${API_BASE_URL}/hr/faceRecognition`;
 const MIN_RATIO = 0.199; 
 
 export default function FaceDetectionLiveness() {
@@ -17,8 +16,9 @@ export default function FaceDetectionLiveness() {
   const [cameraOpen, setCameraOpen] = useState(true);
   const [capturedImage, setCapturedImage] = useState(null);
   const [faceRatioValue, setFaceRatioValue] = useState(null);
-
-  const countdownSeconds = 2;
+  const [faceRecognitionResult, setFaceRecognitionResult] = useState(null);
+  const ENABLE_FACE_RECOGNITION = false; 
+  const countdownSeconds = 1;
 
   useEffect(() => {
     const loadModels = async () => {
@@ -76,8 +76,8 @@ export default function FaceDetectionLiveness() {
 
           const cx = canvas.width / 2;
           const cy = canvas.height / 2;
-          const rx = canvas.width * 0.33;
-          const ry = canvas.height * 0.45;
+          const rx = canvas.width * 0.39;
+          const ry = canvas.height * 0.495;
 
           ctx.save();
           ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
@@ -201,6 +201,18 @@ export default function FaceDetectionLiveness() {
       const flaskRes = await fetch(LIVENESS_API_URL, { method: "POST", body: formData });
       const flaskData = await flaskRes.json();
       setLivenessResult(flaskData);
+
+      if (ENABLE_FACE_RECOGNITION) {
+         // 2. التعرف على الوجه في Laravel حتى لو spoof
+      const laravelRes = await fetch(FACE_RECOGNITION_API_URL, {
+        method: "POST",
+        body: formData,
+      });
+
+      const recognitionData = await laravelRes.json();
+      setFaceRecognitionResult(recognitionData?.match);
+      console.log("Face Recognition Result:", recognitionData);
+      } 
     } catch (err) {
       setLivenessResult({ error: "Error sending image to backend!" });
     } finally {
@@ -274,7 +286,8 @@ export default function FaceDetectionLiveness() {
 
       )}
 
-        <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", background: "#222", borderRadius: "5rem", overflow: "hidden", boxShadow: "0 2px 16px #0005", marginBottom: cameraOpen ? "1.2rem" : "2rem" }}>
+        <div style={{ position: "relative", width: "100%", aspectRatio: "4/4", background: "#222", borderRadius: "5rem", overflow: "hidden", boxShadow: "0 2px 16px #0005", marginBottom: cameraOpen ? "1.2rem" : "2rem" }}>
+
           {cameraOpen && (
             <video ref={videoRef} autoPlay muted style={{ borderRadius: "1rem", width: "100%", height: "100%", objectFit: "cover", display: "block", transform: "scaleX(-1)" }} />
           )}
@@ -289,6 +302,25 @@ export default function FaceDetectionLiveness() {
             {livenessResult.liveness && livenessResult.score >= 0.95 ? `Real face ✅ (${livenessResult.score})` : `Spoof ❌ (${livenessResult.score})`}
           </div>
         )}
+        {faceRecognitionResult && (
+          <div style={{
+            background: "#eef",
+            color: "#003366",
+            fontWeight: "bold",
+            margin: "6px auto",
+            padding: "0.6rem 1rem",
+            borderRadius: "0.8rem",
+            border: "1px solid #ddd",
+            fontSize: "0.95rem",
+            boxShadow: "0 1px 8px #0001",
+            width: "fit-content"
+          }}>
+            {faceRecognitionResult.found
+              ? `Employee: ${faceRecognitionResult.name}`
+              : "Employee: No match found"}
+          </div>
+        )}
+
 
         {!cameraOpen && (
           <button onClick={handleReopenCamera} style={{ marginTop: "1.5rem", background: "#0d7c66", color: "#fff", padding: "0.9rem 2rem", border: "none", borderRadius: "0.8rem", fontSize: "1rem", fontWeight: "bold", letterSpacing: 1, cursor: "pointer", maxWidth: "90%" }}>
