@@ -1,16 +1,10 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import LivenessCheck from "./pages/LivenessCheck";
 import AttendanceKeypadPage from "./pages/AttendanceKeypadPage";
 import LoginPage from "./pages/LoginPage";
-import ProtectedRoute from "./components/ProtectedRoute";
-import FaceVerificationPage from "./pages/FaceVerificationPage";
-import FaceRecognitionPage from './pages/FaceRecognitionPage';
-import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; // new page
-import FaceCapturePage from "./pages/FaceCapturePage";
-
-const PRIMARY_COLOR = "#0d7c66";
-const PRIMARY_GRADIENT = "linear-gradient(90deg, #0d7c66 70%, #21bfa5 100%)";
+import ProtectedRoute from "./components/ProtectedRoute"; 
+import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; 
+ 
 
 function HomePage() {
   return (
@@ -96,14 +90,7 @@ export default function App() {
   return (
     <BrowserRouter basename="/">
       <Routes>
-        <Route
-          path="/face-capture"
-          element={
-            <ProtectedRoute>
-              <FaceCapturePage />
-            </ProtectedRoute>
-          }
-        />
+      
         <Route
           path="/"
           element={
@@ -129,22 +116,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/face-verification"
-          element={
-            <ProtectedRoute>
-              <FaceVerificationPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/recognize"
-          element={
-            <ProtectedRoute>
-              <FaceRecognitionPage />
-            </ProtectedRoute>
-          }
-        />
+       
+       
         <Route
           path="*"
           element={

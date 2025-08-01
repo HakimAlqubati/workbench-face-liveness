@@ -3,7 +3,7 @@ import * as faceapi from "face-api.js";
 import { API_BASE_URL, LOCAL_PYTHON_BASE_API } from "../config";
 const LIVENESS_API_URL = `${LOCAL_PYTHON_BASE_API}/liveness`;
 const FACE_RECOGNITION_API_URL = `${API_BASE_URL}/hr/faceRecognition`;
-const MIN_RATIO = 0.199; 
+const MIN_RATIO = 0.15; 
 
 export default function FaceDetectionLiveness() {
   const videoRef = useRef();
@@ -286,7 +286,7 @@ export default function FaceDetectionLiveness() {
 
       )}
 
-        <div style={{ position: "relative", width: "100%", aspectRatio: "4/4", background: "#222", borderRadius: "5rem", overflow: "hidden", boxShadow: "0 2px 16px #0005", marginBottom: cameraOpen ? "1.2rem" : "2rem" }}>
+        <div style={{ position: "relative", width: "100%", height:"15rem", aspectRatio: "4/4", background: "#222", borderRadius: "5rem", overflow: "hidden", boxShadow: "0 2px 16px #0005", marginBottom: cameraOpen ? "1.2rem" : "2rem" }}>
 
           {cameraOpen && (
             <video ref={videoRef} autoPlay muted style={{ borderRadius: "1rem", width: "100%", height: "100%", objectFit: "cover", display: "block", transform: "scaleX(-1)" }} />
