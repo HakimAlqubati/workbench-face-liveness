@@ -3,7 +3,7 @@ import * as faceapi from "face-api.js";
 import { API_BASE_URL, LOCAL_PYTHON_BASE_API } from "../config";
 const LIVENESS_API_URL = `${LOCAL_PYTHON_BASE_API}/liveness`;
 const FACE_RECOGNITION_API_URL = `${API_BASE_URL}/hr/faceRecognition`;
-const MIN_RATIO = 0.15; 
+const MIN_RATIO = 0.10; 
 
 export default function FaceDetectionLiveness() {
   const videoRef = useRef();
@@ -17,9 +17,19 @@ export default function FaceDetectionLiveness() {
   const [capturedImage, setCapturedImage] = useState(null);
   const [faceRatioValue, setFaceRatioValue] = useState(null);
   const [faceRecognitionResult, setFaceRecognitionResult] = useState(null);
-  const ENABLE_FACE_RECOGNITION = false; 
+  const ENABLE_FACE_RECOGNITION = true; 
   const countdownSeconds = 1;
+  const [brightnessLevel, setBrightnessLevel] = useState(null);
+  const [brightnessStatus, setBrightnessStatus] = useState(null);
+  const [showScreensaver, setShowScreensaver] = useState(false);
+  const [screensaverCountdown, setScreensaverCountdown] = useState(null);
+  
+  const resetTimerRef = useRef(null);
 
+  const SSAVER_SECONDS = 20;
+  const SSAVER_MSECONDS = 20000;
+  const DISPLAY_IMAGE_SECONDS = 15 * 1000; 
+  
   useEffect(() => {
     const loadModels = async () => {
       const MODEL_URL = "/models";
@@ -29,22 +39,73 @@ export default function FaceDetectionLiveness() {
     loadModels();
   }, []);
 
+
   useEffect(() => {
-    if (modelsLoaded && cameraOpen) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => {
-          if (videoRef.current) videoRef.current.srcObject = stream;
-        })
-        .catch((err) => alert("Camera error: " + err.message));
+  const video = videoRef.current;
+
+  // أوقف الكاميرا في حالتين: إما الشاشة مغلقة، أو شاشة التوقف فعالة
+  if ((!cameraOpen || showScreensaver) && video && video.srcObject) {
+    video.srcObject.getTracks().forEach((track) => track.stop());
+    video.srcObject = null;
+    return;
+  }
+
+  // شغل الكاميرا إذا كانت الشاشة مفتوحة ولا يوجد شاشة توقف
+  if (modelsLoaded && cameraOpen && !showScreensaver) {
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then((stream) => {
+        if (video) video.srcObject = stream;
+      })
+      .catch((err) => alert("Camera error: " + err.message));
+  }
+}, [modelsLoaded, cameraOpen, showScreensaver]);
+
+
+
+
+useEffect(() => {
+  let timeoutId;
+  let countdownInterval;
+  let startTime;
+
+
+  const resetTimer = () => {
+    clearTimeout(timeoutId);
+    clearInterval(countdownInterval);
+    setShowScreensaver(false);
+    setScreensaverCountdown(null);
+    // window.location.reload();
+    if (!faceDetected) {
+      startTime = Date.now();
+      setScreensaverCountdown(SSAVER_SECONDS); // 10 ثواني
+
+      countdownInterval = setInterval(() => {
+        const secondsPassed = Math.floor((Date.now() - startTime) / 1000);
+        const remaining = SSAVER_SECONDS - secondsPassed;
+        if (remaining > 0) {
+          setScreensaverCountdown(remaining);
+        } else {
+          clearInterval(countdownInterval);
+        }
+      }, 1000);
+
+      timeoutId = setTimeout(() => {
+        setShowScreensaver(true);
+      }, SSAVER_MSECONDS); // 10 ثواني
     }
-    if (!cameraOpen && videoRef.current) {
-      const video = videoRef.current;
-      if (video.srcObject) {
-        video.srcObject.getTracks().forEach((track) => track.stop());
-        video.srcObject = null;
-      }
-    }
-  }, [modelsLoaded, cameraOpen]);
+  };
+
+  const events = ['mousemove', 'keydown', 'click', 'touchstart'];
+  events.forEach(event => window.addEventListener(event, resetTimer));
+
+  resetTimerRef.current = resetTimer;
+  resetTimer();
+  return () => {
+    events.forEach(event => window.removeEventListener(event, resetTimer));
+    clearTimeout(timeoutId);
+    clearInterval(countdownInterval);
+  };
+}, [faceDetected]);
 
   function isInsideOval(x, y, canvasWidth, canvasHeight) {
     const cx = canvasWidth / 2;
@@ -53,6 +114,138 @@ export default function FaceDetectionLiveness() {
     const ry = canvasHeight * 0.45;
     return ((x - cx) ** 2) / (rx ** 2) + ((y - cy) ** 2) / (ry ** 2) <= 1;
   }
+
+  
+
+  async function processFrame() {
+  if (!videoRef.current || !canvasRef.current) return;
+
+  const video = videoRef.current;
+  const canvas = canvasRef.current;
+
+  // ضبط أبعاد الكانفس
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  }
+
+  if (capturedImage) return; // لا تعالج إذا التقطنا صورة
+
+  const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+  const dims = { width: video.videoWidth, height: video.videoHeight };
+  const resizedDetections = faceapi.resizeResults(detections, dims);
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // إعدادات الدائرة البيضاوية
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const rx = canvas.width * 0.33;   // عرض أقل
+  const ry = canvas.height * 0.5;  
+
+  // رسم الطبقة المظللة خارج البيضاوي
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+  ctx.fill("evenodd");
+  ctx.restore();
+
+  // رسم خط البيضاوي
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+  ctx.strokeStyle = "#ffffff66";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 6]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // عكس الوجه ورسم الكشف
+  ctx.save(); 
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  faceapi.draw.drawDetections(canvas, resizedDetections, {
+    boxColor: "#a01300ff",
+    label: "",
+    lineWidth: 3,
+  });
+  ctx.restore();
+
+  // في حالة تم الكشف عن وجه
+  if (detections && detections.length > 0) {
+    const box = detections[0].box;
+    const faceArea = box.width * box.height;
+    const frameArea = video.videoWidth * video.videoHeight;
+    const faceRatio = faceArea / frameArea;
+
+    setFaceRatioValue(faceRatio); // لتحديث progress bar
+
+    // الإضاءة
+    const brightness = calculateBrightnessFromVideo(video);
+    setBrightnessLevel(brightness);
+
+    if (brightness < 30) setBrightnessStatus("Very dark ❌");
+    else if (brightness < 60) setBrightnessStatus("Too dim ❌");
+    else if (brightness < 100) setBrightnessStatus("Dim light ⚠️");
+    else if (brightness < 160) setBrightnessStatus("Good lighting ✅");
+    else if (brightness < 220) setBrightnessStatus("Excellent lighting 🌟");
+    else setBrightnessStatus("Too bright ⚠️");
+
+    if (faceRatio < MIN_RATIO) {
+      setFaceDetected(false);
+      return;
+    }
+
+    // هل الوجه داخل الدائرة؟
+    const sampleCountX = 10;
+    const sampleCountY = 10;
+    let insideCount = 0;
+    let totalCount = 0;
+
+    for (let i = 0; i <= sampleCountX; i++) {
+      for (let j = 0; j <= sampleCountY; j++) {
+        const px = box.x + (i / sampleCountX) * box.width;
+        const py = box.y + (j / sampleCountY) * box.height;
+        totalCount++;
+        if (isInsideOval(px, py, video.videoWidth, video.videoHeight)) {
+          insideCount++;
+        }
+      }
+    }
+
+    const ratio = insideCount / totalCount;
+    setFaceDetected(ratio >= 0.8);
+  } else {
+    setFaceDetected(false);
+  }
+}
+
+// useEffect(() => {
+//   if (!cameraOpen || !modelsLoaded || !videoRef.current) return;
+
+//   let lastExecutionTime = 0;
+//   let animationFrameId;
+
+//   const onPlay = async (timestamp) => {
+//     const delay = 300; // milliseconds
+//     if (timestamp - lastExecutionTime >= delay) {
+//       lastExecutionTime = timestamp;
+//       await processFrame();
+//     }
+//     animationFrameId = requestAnimationFrame(onPlay);
+//   };
+
+//   const video = videoRef.current;
+//   video.addEventListener("play", () => {
+//     animationFrameId = requestAnimationFrame(onPlay);
+//   });
+
+//   return () => {
+//     cancelAnimationFrame(animationFrameId);
+//   };
+// }, [modelsLoaded, cameraOpen, capturedImage]);
+
 
   useEffect(() => {
     if (!cameraOpen) return;
@@ -76,8 +269,8 @@ export default function FaceDetectionLiveness() {
 
           const cx = canvas.width / 2;
           const cy = canvas.height / 2;
-          const rx = canvas.width * 0.39;
-          const ry = canvas.height * 0.495;
+          const rx = canvas.width * 0.33;   // عرض أقل
+          const ry = canvas.height * 0.5;  
 
           ctx.save();
           ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
@@ -114,6 +307,26 @@ export default function FaceDetectionLiveness() {
 
             setFaceRatioValue(faceRatio); // لتحديث progress bar
 
+            
+            const brightness = calculateBrightnessFromVideo(video);
+            setBrightnessLevel(brightness);
+
+
+             
+            if (brightness < 30) {
+                setBrightnessStatus("Very dark ❌");
+              } else if (brightness < 60) {
+                setBrightnessStatus("Too dim ❌");
+              } else if (brightness < 100) {
+                setBrightnessStatus("Dim light ⚠️");
+              } else if (brightness < 160) {
+                setBrightnessStatus("Good lighting ✅");
+              } else if (brightness < 220) {
+                setBrightnessStatus("Excellent lighting 🌟");
+              } else {
+                setBrightnessStatus("Too bright ⚠️");
+              }
+
             if (faceRatio < MIN_RATIO) {
               setFaceDetected(false);
               return;
@@ -137,6 +350,7 @@ export default function FaceDetectionLiveness() {
             const ratio = insideCount / totalCount; 
 
             setFaceDetected(ratio >= 0.8);
+
           } else { 
             setFaceDetected(false);
           }
@@ -181,6 +395,10 @@ export default function FaceDetectionLiveness() {
     try {
       const canvas = document.createElement("canvas");
       const video = videoRef.current;
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        alert("Video not ready yet");
+        return;
+      }
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext("2d");
@@ -192,7 +410,14 @@ export default function FaceDetectionLiveness() {
 
       const dataUrl = canvas.toDataURL("image/jpeg");
       setCapturedImage(dataUrl);
+
+      // أغلق الكاميرا بعد الالتقاط
       setTimeout(() => setCameraOpen(false), 600);
+
+      // إعادة فتح الكاميرا تلقائيًا بعد المدة المحددة
+      setTimeout(() => {
+        handleReopenCamera();
+      }, DISPLAY_IMAGE_SECONDS);
 
       const blob = await (await fetch(dataUrl)).blob();
       const formData = new FormData();
@@ -210,8 +435,7 @@ export default function FaceDetectionLiveness() {
       });
 
       const recognitionData = await laravelRes.json();
-      setFaceRecognitionResult(recognitionData?.match);
-      console.log("Face Recognition Result:", recognitionData);
+      setFaceRecognitionResult(recognitionData?.match); 
       } 
     } catch (err) {
       setLivenessResult({ error: "Error sending image to backend!" });
@@ -228,37 +452,187 @@ export default function FaceDetectionLiveness() {
     setCapturedImage(null);
   }
 
-  useEffect(() => {
-    if (!capturedImage || !canvasRef.current) return;
 
-    const img = new Image();
-    img.onload = () => {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext("2d");
+  function calculateBrightnessFromVideo(video) {
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = frame.data;
 
-      setTimeout(() => {
+    let totalBrightness = 0;
+    let pixelCount = data.length / 4;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+      totalBrightness += brightness;
+    }
+
+    const avgBrightness = totalBrightness / pixelCount;
+    return avgBrightness;
+  }
+
+ useEffect(() => {
+  if (!capturedImage) return;
+
+  const interval = setInterval(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const img = new Image();
+      img.onload = () => {
+        const ctx = canvas.getContext("2d");
         canvas.width = img.width;
         canvas.height = img.height;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, img.width, img.height);
-      }, 150);
-    };
-    img.src = capturedImage;
-  }, [capturedImage]);
+      };
+      img.src = capturedImage;
+      clearInterval(interval);
+    }
+  }, 100); // يتأكد كل 100ms حتى يتوفر canvas
+
+  return () => clearInterval(interval);
+}, [capturedImage]);
+ 
+  useEffect(() => {
+  if (!showScreensaver || !modelsLoaded) return;
+
+  const video = document.createElement("video");
+  let stream;
+  let animationId;
+
+  const startBackgroundCamera = async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await video.play();
+
+      const detect = async () => {
+        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+        if (detections.length > 0) {
+          // اكتشف وجه، أخرج من شاشة التوقف
+          setShowScreensaver(false);
+          setCameraOpen(true);
+          stopBackgroundCamera();
+          if (resetTimerRef.current) resetTimerRef.current();
+          setScreensaverCountdown(SSAVER_SECONDS); 
+        } else {
+          setTimeout(() => detect(), 2000);
+        }
+      };
+
+      detect();
+    } catch (err) {
+      console.error("Error starting background camera:", err);
+    }
+  };
+
+  const stopBackgroundCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    cancelAnimationFrame(animationId);
+  };
+
+  startBackgroundCamera();
+
+  return () => {
+    stopBackgroundCamera();
+  };
+}, [showScreensaver, modelsLoaded]);
+
+
+ if (showScreensaver) {
+  return (
+    <div
+      onClick={() => setShowScreensaver(false)}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100vw",
+        height: "100vh",
+        backgroundColor: "#000",
+        overflow: "hidden",
+        zIndex: 9999,
+        cursor: "pointer"
+      }}
+    >
+      <div
+        className="moving-text"
+        style={{
+          position: "absolute",
+          fontSize: "5rem",
+          fontWeight: "bold",
+          color: "#0fd86e",
+          animation: "bounce 12s linear infinite",
+        }}
+      >
+        NLT
+      </div>
+
+      <style>
+        {`
+          @keyframes bounce {
+            0% {
+              top: 0;
+              left: 0;
+            }
+            25% {
+              top: 0;
+              left: 80%;
+            }
+            50% {
+              top: 80%;
+              left: 80%;
+            }
+            75% {
+              top: 80%;
+              left: 0;
+            }
+            100% {
+              top: 0;
+              left: 0;
+            }
+          }
+        `}
+      </style>
+    </div>
+  );
+}
+
+
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #041f13, #052d20 70%, #01170e)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", padding: "4vw", fontFamily: "'Segoe UI', sans-serif" }}>
       <div style={{ borderRadius: "2rem", background: "rgba(0, 25, 15, 0.9)", padding: "5vw", boxShadow: "0 10px 40px #011a10", textAlign: "center", width: "100%", maxWidth: "480px" }}>
         <h2 style={{ letterSpacing: 1.5, fontSize: "1.8rem", marginBottom: "0.8rem" }}>Face Liveness Check</h2>
+        {screensaverCountdown !== null && (
+        <span style={{
+          fontSize: "0.9rem",
+          fontWeight: "500",
+          color: "#0fd86e",
+          background: "#112", 
+          padding: "4px 10px",
+          borderRadius: "8px"
+        }}>
+      ({screensaverCountdown}s to screensaver)
+    </span>
+  )}
         <p style={{ marginBottom: "1rem", fontSize: "0.95rem", fontWeight: "500", color: "#ccc", lineHeight: 1.5 }}>Align your face inside the oval. Detection starts when at least 80% is inside.</p>
 
       {cameraOpen && (
        <div style={{ 
-  display: "flex", 
-  alignItems: "center", 
-  gap: "10px", 
-  marginBottom: "0.7rem"
-}}>
+      display: "flex", 
+      alignItems: "center", 
+      gap: "10px", 
+      marginBottom: "0.7rem"
+    }}>
   <div style={{ 
     flexGrow: 1,
     height: "12px", 
@@ -299,7 +673,7 @@ export default function FaceDetectionLiveness() {
 
         {livenessResult && (
           <div style={{ background: livenessResult.liveness ? "#e8ffe8" : "#ffe8e8", color: livenessResult.liveness ? "#00944b" : "#c20018", fontWeight: "bold", margin: "8px auto", padding: "0.8rem 1rem", borderRadius: "0.8rem", border: "1px solid #eee", fontSize: "1rem", boxShadow: "0 2px 12px #0001", width: "fit-content" }}>
-            {livenessResult.liveness && livenessResult.score >= 0.95 ? `Real face ✅ (${livenessResult.score})` : `Spoof ❌ (${livenessResult.score})`}
+            {livenessResult.liveness && livenessResult.score >= 0.85 ? `Real face ✅ (${livenessResult.score})` : `❌ (${livenessResult.score})`}
           </div>
         )}
         {faceRecognitionResult && (
@@ -327,7 +701,17 @@ export default function FaceDetectionLiveness() {
             Next Employee
           </button>
         )}
+
+        {brightnessLevel !== null && (
+          <div style={{ marginBottom: "0.5rem", fontSize: "0.95rem", color: "#ccc", fontWeight: "bold" }}>
+            {brightnessStatus} - {brightnessLevel.toFixed(0)} / 255
+          </div>
+        )}
+        
+  
+
       </div>
+      
     </div>
   );
 }
