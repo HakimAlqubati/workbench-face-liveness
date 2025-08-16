@@ -4,6 +4,7 @@ import AttendanceKeypadPage from "./pages/AttendanceKeypadPage";
 import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute"; 
 import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; 
+import FaceLivenesAdvanced from "./pages/FaceLivenesAdvanced"; 
  
 
 function HomePage() {
@@ -34,6 +35,15 @@ function HomePage() {
           marginBottom: 12
         }}>
           
+          <Link
+            to="/advanced-webcam"
+            style={buttonStyle}
+            onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
+            onMouseUp={e => e.currentTarget.style.transform = ""}
+            onMouseLeave={e => e.currentTarget.style.transform = ""}
+          >
+            Advanced Webcam
+          </Link>
           <Link
             to="/liveness-recognition"
             style={buttonStyle}
@@ -105,6 +115,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <FaceLivenessRecognition />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/advanced-webcam"
+          element={
+            <ProtectedRoute>
+              <FaceLivenesAdvanced />
             </ProtectedRoute>
           }
         />
