@@ -2,8 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import AttendanceKeypadPage from "./pages/AttendanceKeypadPage";
 import LoginPage from "./pages/LoginPage";
-import ProtectedRoute from "./components/ProtectedRoute"; 
-import FaceLivenessRecognition from "./pages/FaceLivenessRecognition"; 
+import ProtectedRoute from "./components/ProtectedRoute";  
 import FaceLivenesAdvanced from "./pages/FaceLivenesAdvanced"; 
  
 
@@ -44,16 +43,7 @@ function HomePage() {
           >
             Advanced Webcam
           </Link>
-          <Link
-            to="/liveness-recognition"
-            style={buttonStyle}
-            onMouseDown={e => e.currentTarget.style.transform = "scale(0.97)"}
-            onMouseUp={e => e.currentTarget.style.transform = ""}
-            onMouseLeave={e => e.currentTarget.style.transform = ""}
-          >
-            Liveness
-          </Link>
-
+          
           
 
           <Link
@@ -110,14 +100,7 @@ export default function App() {
           }
         />
         <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/liveness-recognition"
-          element={
-            <ProtectedRoute>
-              <FaceLivenessRecognition />
-            </ProtectedRoute>
-          }
-        />
+        
         <Route
           path="/advanced-webcam"
           element={

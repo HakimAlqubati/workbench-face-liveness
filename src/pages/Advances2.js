@@ -22,11 +22,6 @@ export default function FaceLivenesAdvanced() {
   const captureCanvasRef = useRef(null);
   const rvfcStopRef = useRef(false);
 
-  // معالجة متزامنة/حارس + مراقبة آخر فريم
-  const processingLockRef = useRef(false);
-  const lastFrameAtRef = useRef(0);
-  const watchdogRef = useRef(null);
-
   // -------------------- State --------------------
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [livenessResult, setLivenessResult] = useState(null);
@@ -42,18 +37,15 @@ export default function FaceLivenesAdvanced() {
   const [showScreensaver, setShowScreensaver] = useState(false);
   const [screensaverCountdown, setScreensaverCountdown] = useState(null);
 
-  const kickProcessingRef = useRef(() => {}); // نستدعيها لإعادة تشغيل الحلقة
-  const processingStateRef = useRef({ started: false, intervalId: null, rvfcOn: false });
-
-  // ⏰ NEW: ساعة/تاريخ شاشة التوقف
-  const [now, setNow] = useState(() => new Date());
+  const kickProcessingRef = useRef(() => {}); // لإعادة تشغيل حلقة المعالجة عند الطلب
+  const processingStateRef = useRef({ started: false, intervalId: null });
 
   // -------------------- Config --------------------
   const ENABLE_FACE_RECOGNITION = false;
   const countdownSeconds = 1;
-  const SSAVER_SECONDS = 30;
+  const SSAVER_SECONDS = 5;
   const SSAVER_MSECONDS = SSAVER_SECONDS * 1000;
-  const DISPLAY_IMAGE_MS = 15 * 1000;
+  const DISPLAY_IMAGE_MS = 2 * 1000;
   const BRIGHTNESS_SAMPLE_W = 64, BRIGHTNESS_SAMPLE_H = 36;
   const BRIGHTNESS_EVERY_N_FRAMES = 5;
   const DRAW_DETECTIONS_EVERY_N = 2;
@@ -103,6 +95,7 @@ export default function FaceLivenesAdvanced() {
       streamRef.current = stream;
       video.srcObject = stream;
 
+      // انتظر الميتاداتا
       await new Promise((resolve) => {
         const ready = () => {
           video.removeEventListener("loadedmetadata", ready);
@@ -113,10 +106,9 @@ export default function FaceLivenesAdvanced() {
       });
 
       try { await video.play(); } catch {}
+      // حفّز onPlay حتى لو المتصفح ما أطلق الحدث تلقائيًا
       try { video.dispatchEvent(new Event("play")); } catch {}
-      try { video.dispatchEvent(new Event("playing")); } catch {}
 
-      lastFrameAtRef.current = performance.now();
     } catch (err) {
       alert("Camera error: " + err.message);
     }
@@ -169,7 +161,7 @@ export default function FaceLivenesAdvanced() {
       timeoutId = setTimeout(() => {
         setShowScreensaver(true);
         stopAllCameras();
-        processingStateRef.current.started = false; // ✅
+        processingStateRef.current.started = false; // ✅ صفّر حالة المعالجة
       }, SSAVER_MSECONDS);
     };
 
@@ -190,13 +182,6 @@ export default function FaceLivenesAdvanced() {
       clearInterval(countdownInterval);
     };
   }, [SSAVER_SECONDS, SSAVER_MSECONDS]);
-
-  // ⏰ NEW: مشغّل الساعة أثناء شاشة التوقف فقط
-  useEffect(() => {
-    if (!showScreensaver) return;
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, [showScreensaver]);
 
   // -------------------- Geometry helper --------------------
   function isInsideOval(x, y, canvasWidth, canvasHeight) {
@@ -234,25 +219,6 @@ export default function FaceLivenesAdvanced() {
     return val;
   }
 
-  // -------------------- TF Scope helpers (تحسين الذاكرة) --------------------
-  const getTfEngine = () => {
-    try { return faceapi.tf?.engine?.(); } catch { return null; }
-  };
-
-  async function withTfScopeAsync(fn) {
-    const eng = getTfEngine();
-    if (!eng?.startScope || !eng?.endScope) {
-      // لا يوجد backend/engine — نفّذ مباشرة
-      return await fn();
-    }
-    eng.startScope();
-    try {
-      return await fn();
-    } finally {
-      eng.endScope(); // يحرّر أي tensors لم تُربط بمكان آخر
-    }
-  }
-
   // -------------------- Frame Processing (with hard guards) --------------------
   const SAMPLE_X = 10;
   const SAMPLE_Y = 10;
@@ -261,148 +227,120 @@ export default function FaceLivenesAdvanced() {
     if (!videoRef.current || !canvasRef.current) return;
     if (rvfcStopRef.current || !cameraOpen || capturedImageURL) return;
 
-    // يمنع التداخل بين RVFC و interval
-    if (processingLockRef.current) return;
-    processingLockRef.current = true;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
 
+    const vw = video.videoWidth | 0;
+    const vh = video.videoHeight | 0;
+    if (!vw || !vh) return; // حارس أساسي
+
+    if (canvas.width !== vw || canvas.height !== vh) {
+      canvas.width = vw;
+      canvas.height = vh;
+    }
+
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // إطار الإرشاد
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const rx = canvas.width * 0.33;
+    const ry = canvas.height * 0.5;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.fill("evenodd");
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.strokeStyle = "#ffffff66";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // كشف الوجوه
+    const tf = faceapi.tf;
+    const detect = () => faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions());
+    let detections;
     try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
+      detections = tf?.tidy ? await tf.tidy(detect) : await detect();
+    } catch {
+      return;
+    }
 
-      const vw = video.videoWidth | 0;
-      const vh = video.videoHeight | 0;
-      if (!vw || !vh) return;
+    // قلل الرسم لكل فريمين + حماية resizeResults
+    drawEveryNRef.current = (drawEveryNRef.current + 1) % DRAW_DETECTIONS_EVERY_N;
+    const shouldDrawDetections = (drawEveryNRef.current === 0);
 
-      if (canvas.width !== vw || canvas.height !== vh) {
-        canvas.width = vw;
-        canvas.height = vh;
-      }
-
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // إطار الإرشاد (تظليل)
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const rx = canvas.width * 0.33;
-      const ry = canvas.height * 0.5;
-
-      ctx.save();
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.beginPath();
-      ctx.rect(0, 0, canvas.width, canvas.height);
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-      ctx.fill("evenodd");
-      ctx.restore();
-
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-      ctx.strokeStyle = "#ffffff66";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 6]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // كشف الوجوه (داخل نطاق TF Engine لضمان تحرير التنسورات)
-      const tf = faceapi.tf;
-      let detections;
+    if (shouldDrawDetections && detections && detections.length > 0) {
+      const dims = { width: vw, height: vh };
       try {
-        const detect = () => faceapi.detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions()
-        );
-
-        // الأولوية لاستخدام engine scope، ثم tidy كـ fallback، ثم التنفيذ المباشر
-        const eng = getTfEngine();
-        if (eng?.startScope && eng?.endScope) {
-          eng.startScope();
-          try {
-            detections = await detect();
-          } finally {
-            eng.endScope();
-          }
-        } else if (tf?.tidy) {
-          detections = await tf.tidy(detect);
-        } else {
-          detections = await detect();
-        }
+        const resizedDetections = faceapi.resizeResults(detections, dims);
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        faceapi.draw.drawDetections(canvas, resizedDetections, {
+          boxColor: "#13ca72",
+          label: "",
+          lineWidth: 3,
+        });
+        ctx.restore();
       } catch {
+        return; // تجاهل دورة الرسم إذا حدث تبدل مفاجئ للأبعاد
+      }
+    }
+
+    // قياسات/تحقق
+    if (detections && detections.length > 0) {
+      const box = detections[0].box;
+      const faceArea = box.width * box.height;
+      const frameArea = vw * vh;
+      const faceRatio = frameArea ? faceArea / frameArea : 0;
+      setFaceRatioValue(faceRatio);
+
+      const brightness = calculateBrightnessFromVideoLite(video);
+      setBrightnessLevel(brightness);
+      if (brightness < 30) setBrightnessStatus("Very dark ❌");
+      else if (brightness < 60) setBrightnessStatus("Too dim ❌");
+      else if (brightness < 100) setBrightnessStatus("Dim light ⚠️");
+      else if (brightness < 160) setBrightnessStatus("Good lighting ✅");
+      else if (brightness < 220) setBrightnessStatus("Excellent lighting 🌟");
+      else setBrightnessStatus("Too bright ⚠️");
+
+      if (faceRatio < MIN_RATIO) {
+        setFaceDetected(false);
         return;
       }
 
-      // رسم صندوق الكشف (كل N فريم)
-      drawEveryNRef.current = (drawEveryNRef.current + 1) % DRAW_DETECTIONS_EVERY_N;
-      const shouldDrawDetections = (drawEveryNRef.current === 0);
-
-      if (shouldDrawDetections && detections && detections.length > 0) {
-        const dims = { width: vw, height: vh };
-        try {
-          const resizedDetections = faceapi.resizeResults(detections, dims);
-          ctx.save();
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-          faceapi.draw.drawDetections(canvas, resizedDetections, {
-            boxColor: "#13ca72",
-            label: "",
-            lineWidth: 3,
-          });
-          ctx.restore();
-        } catch {
-          return;
+      let insideCount = 0;
+      let totalCount = 0;
+      for (let i = 0; i <= SAMPLE_X; i++) {
+        for (let j = 0; j <= SAMPLE_Y; j++) {
+          const px = box.x + (i / SAMPLE_X) * box.width;
+          const py = box.y + (j / SAMPLE_Y) * box.height;
+          totalCount++;
+          if (isInsideOval(px, py, vw, vh)) insideCount++;
         }
       }
-
-      // قياسات/تحقق
-      if (detections && detections.length > 0) {
-        const box = detections[0].box;
-        const faceArea = box.width * box.height;
-        const frameArea = vw * vh;
-        const faceRatio = frameArea ? faceArea / frameArea : 0;
-        setFaceRatioValue(faceRatio);
-
-        const brightness = calculateBrightnessFromVideoLite(video);
-        setBrightnessLevel(brightness);
-        if (brightness < 30) setBrightnessStatus("Very dark ❌");
-        else if (brightness < 60) setBrightnessStatus("Too dim ❌");
-        else if (brightness < 100) setBrightnessStatus("Dim light ⚠️");
-        else if (brightness < 160) setBrightnessStatus("Good lighting ✅");
-        else if (brightness < 220) setBrightnessStatus("Excellent lighting 🌟");
-        else setBrightnessStatus("Too bright ⚠️");
-
-        if (faceRatio < MIN_RATIO) {
-          setFaceDetected(false);
-          return;
-        }
-
-        let insideCount = 0;
-        let totalCount = 0;
-        for (let i = 0; i <= SAMPLE_X; i++) {
-          for (let j = 0; j <= SAMPLE_Y; j++) {
-            const px = box.x + (i / SAMPLE_X) * box.width;
-            const py = box.y + (j / SAMPLE_Y) * box.height;
-            totalCount++;
-            if (isInsideOval(px, py, vw, vh)) insideCount++;
-          }
-        }
-        const ratio = totalCount ? insideCount / totalCount : 0;
-        setFaceDetected(ratio >= 0.8);
-      } else {
-        setFaceDetected(false);
-      }
-
-      // حدّث آخر وقت فريم
-      lastFrameAtRef.current = performance.now();
-    } finally {
-      processingLockRef.current = false;
+      const ratio = totalCount ? insideCount / totalCount : 0;
+      setFaceDetected(ratio >= 0.8);
+    } else {
+      setFaceDetected(false);
     }
   }
 
-  // -------------------- Polling loop (RVFC + interval معًا) --------------------
+  // -------------------- Polling loop (RVFC or interval) --------------------
   useEffect(() => {
     if (!cameraOpen) return;
 
     const state = processingStateRef.current;
-    state.started = false;
+    state.started = false; // سنعيد تقييم البدء
     rvfcStopRef.current = false;
 
     const startRVFC = () => {
@@ -412,6 +350,8 @@ export default function FaceLivenesAdvanced() {
       const step = async () => {
         const v2 = videoRef.current;
         if (!v2 || rvfcStopRef.current) return;
+
+        // لا تعالج إذا ما عندنا أبعاد أو نعرض صورة ملتقطة
         if (!v2.videoWidth || !v2.videoHeight || capturedImageURL) {
           v2.requestVideoFrameCallback(step);
           return;
@@ -421,11 +361,11 @@ export default function FaceLivenesAdvanced() {
       };
 
       v.requestVideoFrameCallback(step);
-      state.rvfcOn = true;
       return true;
     };
 
     const startInterval = () => {
+      // منع تعدد الـinterval
       stopInterval();
       const id = setInterval(async () => {
         const v = videoRef.current, c = canvasRef.current;
@@ -444,11 +384,14 @@ export default function FaceLivenesAdvanced() {
       }
     };
 
+    // دالة تبدأ المعالجة بأمان، مع إعادة محاولة عند غياب الأبعاد
     const startProcessingSafe = () => {
       if (rvfcStopRef.current || !cameraOpen || !modelsLoaded) return;
+
       const v = videoRef.current, c = canvasRef.current;
       if (!v || !c) return;
 
+      // لو الأبعاد 0، أعد المحاولة بعد لحظات قصيرة
       if (!(v.videoWidth && v.videoHeight)) {
         setTimeout(() => {
           if (!rvfcStopRef.current && cameraOpen && modelsLoaded) {
@@ -458,6 +401,7 @@ export default function FaceLivenesAdvanced() {
         return;
       }
 
+      // اضبط أبعاد الكانفس مرة عند الانطلاق
       if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
         c.width = v.videoWidth;
         c.height = v.videoHeight;
@@ -465,60 +409,38 @@ export default function FaceLivenesAdvanced() {
 
       if (!state.started) {
         state.started = true;
-        // شغّل RVFC و interval معًا – والـ lock يمنع التداخل
-        startRVFC();
-        startInterval();
+        // جرّب RVFC أولاً، وإلا استخدم interval
+        if (!startRVFC()) startInterval();
       }
     };
 
+    // نحفظها في ref لكي نقدر نناديها من خارج الـeffect (بعد شاشة التوقف/إعادة فتح الكاميرا)
     kickProcessingRef.current = startProcessingSafe;
 
+    // Listeners تضمن الانطلاق مهما كان ترتيب الأحداث
     const onPlay = () => startProcessingSafe();
     const onLoadedMeta = () => startProcessingSafe();
-    const onPlaying = () => startProcessingSafe();
 
     const v = videoRef.current;
     if (v) {
       v.addEventListener("play", onPlay);
-      v.addEventListener("playing", onPlaying);
       v.addEventListener("loadedmetadata", onLoadedMeta);
+      // إن كان جاهز أصلاً، ابدأ الآن
       if (v.readyState >= 2) startProcessingSafe();
     }
 
-    // Watchdog: لو ما فيه فريمات تُعالج، أعد الركلة/أعد فتح الكاميرا
-    clearInterval(watchdogRef.current);
-    watchdogRef.current = setInterval(async () => {
-      if (!cameraOpen || showScreensaver) return;
-      const now = performance.now();
-      const staleMs = now - lastFrameAtRef.current;
-
-      // لو توقفت المعالجة > 2s: اركل الحلقة
-      if (staleMs > 2000) {
-        kickProcessingRef.current?.();
-      }
-      // لو ما زالت متوقفة > 5s: أعد فتح الكاميرا بالكامل
-      if (staleMs > 5000) {
-        processingStateRef.current.started = false;
-        rvfcStopRef.current = false;
-        await openMainCamera();
-        kickProcessingRef.current?.();
-      }
-    }, 1000);
-
     return () => {
+      // تنظيف شامل
       rvfcStopRef.current = true;
       stopInterval();
-      clearInterval(watchdogRef.current);
       const v2 = videoRef.current;
       if (v2) {
         v2.removeEventListener("play", onPlay);
-        v2.removeEventListener("playing", onPlaying);
         v2.removeEventListener("loadedmetadata", onLoadedMeta);
       }
       processingStateRef.current.started = false;
-      processingStateRef.current.rvfcOn = false;
     };
-  }, [modelsLoaded, cameraOpen, capturedImageURL, showScreensaver]);
+  }, [modelsLoaded, cameraOpen, capturedImageURL]);
 
   // -------------------- Countdown → Liveness --------------------
   useEffect(() => {
@@ -634,7 +556,7 @@ export default function FaceLivenesAdvanced() {
     drawEveryNRef.current = 0;
     frameCountRef.current = 0;
     rvfcStopRef.current = false;
-    processingStateRef.current.started = false;
+    processingStateRef.current.started = false; // ✅ مهم
 
     if (objectURLRef.current) {
       try { URL.revokeObjectURL(objectURLRef.current); } catch {}
@@ -642,10 +564,10 @@ export default function FaceLivenesAdvanced() {
     }
     setCapturedImageURL(null);
 
+    // افتح الكاميرا/حفّز play ثم اركل حلقة المعالجة صراحة
     const ensureKick = () => {
       try { videoRef.current?.dispatchEvent(new Event("play")); } catch {}
-      try { videoRef.current?.dispatchEvent(new Event("playing")); } catch {}
-      kickProcessingRef.current?.();
+      kickProcessingRef.current?.(); // ✅
     };
 
     if (!videoRef.current?.srcObject) {
@@ -686,11 +608,8 @@ export default function FaceLivenesAdvanced() {
     img.src = capturedImageURL;
 
     return () => {
-      // تحسين تنظيف: قطع المرجع + إلغاء الـURL
-      img.onload = null;
       if (!revoked) {
         try { URL.revokeObjectURL(capturedImageURL); } catch {}
-        revoked = true;
       }
     };
   }, [capturedImageURL]);
@@ -699,7 +618,6 @@ export default function FaceLivenesAdvanced() {
   useEffect(() => {
     return () => {
       rvfcStopRef.current = true;
-      clearInterval(watchdogRef.current);
       stopAllCameras();
       if (objectURLRef.current) {
         try { URL.revokeObjectURL(objectURLRef.current); } catch {}
@@ -708,21 +626,6 @@ export default function FaceLivenesAdvanced() {
     };
   }, []);
 
-  // ⏰ NEW: فورمات الوقت/التاريخ (محلية المتصفح تلقائياً)
-  const timeStr = new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now);
-
-  const dateStr = new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(now);
-
   // -------------------- Render --------------------
   if (showScreensaver) {
     return (
@@ -730,19 +633,19 @@ export default function FaceLivenesAdvanced() {
         onClick={async () => {
           setShowScreensaver(false);
 
-          // **إصلاحات الخروج من شاشة التوقف**
+          // إصلاحات الخروج من شاشة التوقف
           rvfcStopRef.current = false;
-          processingStateRef.current.started = false;
+          processingStateRef.current.started = false;  // ✅
           brightnessCacheRef.current = null;
           drawEveryNRef.current = 0;
           frameCountRef.current = 0;
 
           setCameraOpen(true);
 
+          // افتح الكاميرا ثم اضمن تشغيل الحلقة
           const ensureKick = () => {
             try { videoRef.current?.dispatchEvent(new Event("play")); } catch {}
-            try { videoRef.current?.dispatchEvent(new Event("playing")); } catch {}
-            kickProcessingRef.current?.();
+            kickProcessingRef.current?.(); // ✅
           };
 
           if (!videoRef.current?.srcObject) {
@@ -791,48 +694,6 @@ export default function FaceLivenesAdvanced() {
             pointerEvents: "none",
           }}
         />
-
-        {/* ⏰ NEW: ساعة + تاريخ في زاوية الشاشة */}
-        <div
-          style={{
-            position: "fixed",
-            right: "clamp(12px, 3vw, 32px)",
-            bottom: "clamp(12px, 3vh, 32px)",
-            textAlign: "right",
-            color: "#fff",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))",
-            border: "1px solid rgba(255,255,255,0.15)",
-            borderRadius: 16,
-            padding: "12px 16px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-            backdropFilter: "blur(4px)",
-            WebkitBackdropFilter: "blur(4px)",
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "clamp(28px, 6vw, 56px)",
-              lineHeight: 1,
-              fontWeight: 800,
-              letterSpacing: "0.5px",
-              textShadow: "0 2px 12px rgba(0,0,0,0.55)",
-            }}
-          >
-            {timeStr}
-          </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: "clamp(12px, 2.4vw, 16px)",
-              opacity: 0.9,
-              fontWeight: 600,
-            }}
-          >
-            {dateStr}
-          </div>
-        </div>
-        {/* ⏰ NEW END */}
 
         <style>{`
           @keyframes floaty {
@@ -903,7 +764,7 @@ export default function FaceLivenesAdvanced() {
           }}
         />
 
-        {/* Guided oval + countdown (DOM ثابت يظهر دائمًا) */}
+        {/* Guided oval + countdown */}
         {cameraOpen && (
           <div
             style={{
@@ -1156,7 +1017,7 @@ export default function FaceLivenesAdvanced() {
               zIndex: 13,
             }}
           >
-            {faceRecognitionResult?.found
+            {faceRecognitionResult.found
               ? `Employee: ${faceRecognitionResult.name}`
               : "Employee: No match found"}
           </div>

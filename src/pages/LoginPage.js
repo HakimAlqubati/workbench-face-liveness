@@ -12,7 +12,7 @@ export default function LoginPage() {
       // المستخدم عنده توكن بالفعل
       navigate("/", { replace: true });
     }
-  }, []);
+  }, [navigate]);
 
   return <LoginForm />;
 }
