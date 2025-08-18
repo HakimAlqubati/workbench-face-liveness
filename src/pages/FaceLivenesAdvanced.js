@@ -6,6 +6,10 @@ const LIVENESS_API_URL = `${LOCAL_PYTHON_BASE_API}/liveness`;
 const FACE_RECOGNITION_API_URL = `${API_BASE_URL}/hr/faceRecognition`;
 const MIN_RATIO = 0.10;
 
+// أبعاد البيضاوي كنِسَب من العرض/الارتفاع (مركز الشاشة)
+const OVAL_RX_PCT = 0.24; // نصف القطر الأفقي = 30% من عرض الشاشة/الكانفس
+const OVAL_RY_PCT = 0.40; // نصف القطر الرأسي  = 40% من ارتفاع الشاشة/الكانفس
+
 export default function FaceLivenesAdvanced() {
   // -------------------- Refs --------------------
   const videoRef = useRef(null);
@@ -42,7 +46,7 @@ export default function FaceLivenesAdvanced() {
   const [showScreensaver, setShowScreensaver] = useState(false);
   const [screensaverCountdown, setScreensaverCountdown] = useState(null);
 
-  const kickProcessingRef = useRef(() => {}); // نستدعيها لإعادة تشغيل الحلقة
+  const kickProcessingRef = useRef(() => {});
   const processingStateRef = useRef({ started: false, intervalId: null, rvfcOn: false });
 
   // ⏰ NEW: ساعة/تاريخ شاشة التوقف
@@ -62,7 +66,7 @@ export default function FaceLivenesAdvanced() {
   // -------------------- Camera control --------------------
   function stopAllCameras() {
     try {
-      rvfcStopRef.current = true; // أوقف RVFC loop
+      rvfcStopRef.current = true;
       const v = videoRef.current;
       const s = streamRef.current || (v && v.srcObject);
       if (s) {
@@ -169,7 +173,7 @@ export default function FaceLivenesAdvanced() {
       timeoutId = setTimeout(() => {
         setShowScreensaver(true);
         stopAllCameras();
-        processingStateRef.current.started = false; // ✅
+        processingStateRef.current.started = false;
       }, SSAVER_MSECONDS);
     };
 
@@ -199,15 +203,15 @@ export default function FaceLivenesAdvanced() {
   }, [showScreensaver]);
 
   // -------------------- Geometry helper --------------------
-  function isInsideOval(x, y, canvasWidth, canvasHeight) {
-    const cx = canvasWidth / 2;
-    const cy = canvasHeight / 2;
-    const rx = canvasWidth * 0.33;
-    const ry = canvasHeight * 0.45;
-    return ((x - cx) ** 2) / rx ** 2 + ((y - cy) ** 2) / ry ** 2 <= 1;
+  // نفس البيضاوي المستخدم في الـSVG Mask (مركز الشاشة)
+  function isInsideOval(x, y, w, h, rxPct = OVAL_RX_PCT, ryPct = OVAL_RY_PCT) {
+    const cx = w / 2, cy = h / 2;
+    const rx = w * rxPct, ry = h * ryPct;
+    return ((x - cx) ** 2) / (rx ** 2) + ((y - cy) ** 2) / (ry ** 2) <= 1;
   }
 
-  // -------------------- Brightness (reused canvas + throttling) --------------------
+
+
   function calculateBrightnessFromVideoLite(video) {
     frameCountRef.current = (frameCountRef.current + 1) % BRIGHTNESS_EVERY_N_FRAMES;
     if (frameCountRef.current !== 0 && brightnessCacheRef.current != null) {
@@ -234,7 +238,7 @@ export default function FaceLivenesAdvanced() {
     return val;
   }
 
-  // -------------------- TF Scope helpers (تحسين الذاكرة) --------------------
+  // -------------------- TF Scope helpers --------------------
   const getTfEngine = () => {
     try { return faceapi.tf?.engine?.(); } catch { return null; }
   };
@@ -242,18 +246,17 @@ export default function FaceLivenesAdvanced() {
   async function withTfScopeAsync(fn) {
     const eng = getTfEngine();
     if (!eng?.startScope || !eng?.endScope) {
-      // لا يوجد backend/engine — نفّذ مباشرة
       return await fn();
     }
     eng.startScope();
     try {
       return await fn();
     } finally {
-      eng.endScope(); // يحرّر أي tensors لم تُربط بمكان آخر
+      eng.endScope();
     }
   }
 
-  // -------------------- Frame Processing (with hard guards) --------------------
+  // -------------------- Frame Processing --------------------
   const SAMPLE_X = 10;
   const SAMPLE_Y = 10;
 
@@ -261,7 +264,6 @@ export default function FaceLivenesAdvanced() {
     if (!videoRef.current || !canvasRef.current) return;
     if (rvfcStopRef.current || !cameraOpen || capturedImageURL) return;
 
-    // يمنع التداخل بين RVFC و interval
     if (processingLockRef.current) return;
     processingLockRef.current = true;
 
@@ -281,30 +283,7 @@ export default function FaceLivenesAdvanced() {
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // إطار الإرشاد (تظليل)
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      const rx = canvas.width * 0.33;
-      const ry = canvas.height * 0.5;
-
-      ctx.save();
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.beginPath();
-      ctx.rect(0, 0, canvas.width, canvas.height);
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-      ctx.fill("evenodd");
-      ctx.restore();
-
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-      ctx.strokeStyle = "#ffffff66";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 6]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // كشف الوجوه (داخل نطاق TF Engine لضمان تحرير التنسورات)
-      const tf = faceapi.tf;
+      // كشف الوجوه (TinyFaceDetector)
       let detections;
       try {
         const detect = () => faceapi.detectAllFaces(
@@ -312,7 +291,6 @@ export default function FaceLivenesAdvanced() {
           new faceapi.TinyFaceDetectorOptions()
         );
 
-        // الأولوية لاستخدام engine scope، ثم tidy كـ fallback، ثم التنفيذ المباشر
         const eng = getTfEngine();
         if (eng?.startScope && eng?.endScope) {
           eng.startScope();
@@ -321,8 +299,8 @@ export default function FaceLivenesAdvanced() {
           } finally {
             eng.endScope();
           }
-        } else if (tf?.tidy) {
-          detections = await tf.tidy(detect);
+        } else if (faceapi.tf?.tidy) {
+          detections = await faceapi.tf.tidy(detect);
         } else {
           detections = await detect();
         }
@@ -330,7 +308,7 @@ export default function FaceLivenesAdvanced() {
         return;
       }
 
-      // رسم صندوق الكشف (كل N فريم)
+      // رسم صندوق الكشف (كل N فريم) — لأغراض التوجيه فقط
       drawEveryNRef.current = (drawEveryNRef.current + 1) % DRAW_DETECTIONS_EVERY_N;
       const shouldDrawDetections = (drawEveryNRef.current === 0);
 
@@ -374,6 +352,7 @@ export default function FaceLivenesAdvanced() {
           return;
         }
 
+        // تحقق أن 80% من العينة داخل نفس البيضاوي المستخدم بصرياً
         let insideCount = 0;
         let totalCount = 0;
         for (let i = 0; i <= SAMPLE_X; i++) {
@@ -381,7 +360,7 @@ export default function FaceLivenesAdvanced() {
             const px = box.x + (i / SAMPLE_X) * box.width;
             const py = box.y + (j / SAMPLE_Y) * box.height;
             totalCount++;
-            if (isInsideOval(px, py, vw, vh)) insideCount++;
+            if (isInsideOval(px, py, vw, vh, OVAL_RX_PCT, OVAL_RY_PCT)) insideCount++;
           }
         }
         const ratio = totalCount ? insideCount / totalCount : 0;
@@ -390,14 +369,13 @@ export default function FaceLivenesAdvanced() {
         setFaceDetected(false);
       }
 
-      // حدّث آخر وقت فريم
       lastFrameAtRef.current = performance.now();
     } finally {
       processingLockRef.current = false;
     }
   }
 
-  // -------------------- Polling loop (RVFC + interval معًا) --------------------
+  // -------------------- Polling loop --------------------
   useEffect(() => {
     if (!cameraOpen) return;
 
@@ -465,7 +443,6 @@ export default function FaceLivenesAdvanced() {
 
       if (!state.started) {
         state.started = true;
-        // شغّل RVFC و interval معًا – والـ lock يمنع التداخل
         startRVFC();
         startInterval();
       }
@@ -485,18 +462,15 @@ export default function FaceLivenesAdvanced() {
       if (v.readyState >= 2) startProcessingSafe();
     }
 
-    // Watchdog: لو ما فيه فريمات تُعالج، أعد الركلة/أعد فتح الكاميرا
     clearInterval(watchdogRef.current);
     watchdogRef.current = setInterval(async () => {
       if (!cameraOpen || showScreensaver) return;
       const now = performance.now();
       const staleMs = now - lastFrameAtRef.current;
 
-      // لو توقفت المعالجة > 2s: اركل الحلقة
       if (staleMs > 2000) {
         kickProcessingRef.current?.();
       }
-      // لو ما زالت متوقفة > 5s: أعد فتح الكاميرا بالكامل
       if (staleMs > 5000) {
         processingStateRef.current.started = false;
         rvfcStopRef.current = false;
@@ -533,11 +507,8 @@ export default function FaceLivenesAdvanced() {
       }
       setCapturedImageURL(null);
 
-      // يبدأ عدّاد الالتقاط
       setCountdown(countdownSeconds);
-
-      // أعِد تشغيل عدّاد الخمول/الشاشة المتحركة من الصفر
-      resetTimerRef.current?.();   // ✅
+      resetTimerRef.current?.();
     }
 
     if (countdown !== null && countdown > 0) {
@@ -629,7 +600,6 @@ export default function FaceLivenesAdvanced() {
     setCountdown(null);
     setFaceDetected(false);
 
-    // صفّر كاشات القياس واستأنف الحلقة
     brightnessCacheRef.current = null;
     drawEveryNRef.current = 0;
     frameCountRef.current = 0;
@@ -686,7 +656,6 @@ export default function FaceLivenesAdvanced() {
     img.src = capturedImageURL;
 
     return () => {
-      // تحسين تنظيف: قطع المرجع + إلغاء الـURL
       img.onload = null;
       if (!revoked) {
         try { URL.revokeObjectURL(capturedImageURL); } catch {}
@@ -708,7 +677,7 @@ export default function FaceLivenesAdvanced() {
     };
   }, []);
 
-  // ⏰ NEW: فورمات الوقت/التاريخ (محلية المتصفح تلقائياً)
+  // ⏰ NEW: فورمات الوقت/التاريخ
   const timeStr = new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
     minute: "2-digit",
@@ -723,6 +692,63 @@ export default function FaceLivenesAdvanced() {
     day: "numeric",
   }).format(now);
 
+  // -------------------- Overlay (SVG Mask) --------------------
+  // عنصر SVG يغطي الشاشة، مستطيل مُعتم + قناع يفتح فتحة بيضاوية شفافة
+  function OvalMaskOverlay() {
+    return (
+     <svg
+  width="100%"
+  height="100%"
+  viewBox="0 0 100 100"
+  preserveAspectRatio="none"
+  style={{
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+    zIndex: 11,
+    display: "block",
+  }}
+>
+  <defs>
+    <mask id="ovalMask" maskUnits="objectBoundingBox">
+      {/* خلفية سوداء (مخفية = معتمة) */}
+      <rect x="0" y="0" width="100" height="100" fill="white" />
+      {/* الفتحة البيضاوية شفافة (نشيل التعتيم داخلها) */}
+     <ellipse
+  cx="50"
+  cy="50"
+  rx={OVAL_RX_PCT * 100}   // كان 30
+  ry={OVAL_RY_PCT * 100}   // كان 40
+  fill="black"
+/>
+    </mask>
+  </defs>
+
+  {/* طبقة التعتيم (أسود شفاف) تطبّق عليها الماسك */}
+  <rect
+    x="0"
+    y="0"
+    width="100"
+    height="100"
+    fill="rgba(0,0,0,0.65)"   // ⬅⬅ التعتيم الخارج
+    mask="url(#ovalMask)"
+  />
+
+  {/* الحد الأبيض للبيضاوي */}
+ <ellipse
+  cx="50"
+  cy="50"
+  rx={OVAL_RX_PCT * 100}
+  ry={OVAL_RY_PCT * 100}
+  fill="none"
+  stroke="rgba(255,255,255,0.7)"
+  strokeWidth="0.6"
+/>
+</svg>
+
+    );
+  }
+
   // -------------------- Render --------------------
   if (showScreensaver) {
     return (
@@ -730,7 +756,6 @@ export default function FaceLivenesAdvanced() {
         onClick={async () => {
           setShowScreensaver(false);
 
-          // **إصلاحات الخروج من شاشة التوقف**
           rvfcStopRef.current = false;
           processingStateRef.current.started = false;
           brightnessCacheRef.current = null;
@@ -760,7 +785,6 @@ export default function FaceLivenesAdvanced() {
             }
           }
 
-          // إعادة تشغيل عداد الخمول
           resetTimerRef.current?.();
         }}
         style={{
@@ -779,6 +803,7 @@ export default function FaceLivenesAdvanced() {
         }}
         title="Click to exit screensaver"
       >
+        {/* الشعار العائم */}
         <img
           src="https://nltworkbench.com/storage/logo/default-wb.png"
           alt="NLT Workbench"
@@ -792,31 +817,33 @@ export default function FaceLivenesAdvanced() {
           }}
         />
 
-        {/* ⏰ NEW: ساعة + تاريخ في زاوية الشاشة */}
+        {/* ⏰ الساعة + التاريخ */}
         <div
           style={{
             position: "fixed",
-            right: "clamp(12px, 3vw, 32px)",
-            bottom: "clamp(12px, 3vh, 32px)",
-            textAlign: "right",
+            top: "clamp(12px, 3vh, 28px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            textAlign: "center",
             color: "#fff",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))",
-            border: "1px solid rgba(255,255,255,0.15)",
-            borderRadius: 16,
-            padding: "12px 16px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-            backdropFilter: "blur(4px)",
-            WebkitBackdropFilter: "blur(4px)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03))",
+            border: "1px solid rgba(255,255,255,0.18)",
+            borderRadius: 18,
+            padding: "14px 18px",
+            boxShadow: "0 12px 36px rgba(0,0,0,0.5)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
             pointerEvents: "none",
+            maxWidth: "92vw",
           }}
         >
           <div
             style={{
-              fontSize: "clamp(28px, 6vw, 56px)",
+              fontSize: "clamp(34px, 7vw, 72px)",
               lineHeight: 1,
-              fontWeight: 800,
-              letterSpacing: "0.5px",
-              textShadow: "0 2px 12px rgba(0,0,0,0.55)",
+              fontWeight: 900,
+              letterSpacing: "0.6px",
+              textShadow: "0 3px 16px rgba(0,0,0,0.6)",
             }}
           >
             {timeStr}
@@ -824,15 +851,14 @@ export default function FaceLivenesAdvanced() {
           <div
             style={{
               marginTop: 6,
-              fontSize: "clamp(12px, 2.4vw, 16px)",
-              opacity: 0.9,
-              fontWeight: 600,
+              fontSize: "clamp(13px, 2.6vw, 18px)",
+              opacity: 0.95,
+              fontWeight: 700,
             }}
           >
             {dateStr}
           </div>
         </div>
-        {/* ⏰ NEW END */}
 
         <style>{`
           @keyframes floaty {
@@ -879,18 +905,7 @@ export default function FaceLivenesAdvanced() {
           />
         )}
 
-        {/* Contrast layer */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "radial-gradient(75% 60% at 50% 50%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.25) 100%)",
-          }}
-        />
-
-        {/* Canvas overlay */}
+        {/* Canvas overlay for debug boxes etc. */}
         <canvas
           ref={canvasRef}
           style={{
@@ -903,42 +918,26 @@ export default function FaceLivenesAdvanced() {
           }}
         />
 
-        {/* Guided oval + countdown (DOM ثابت يظهر دائمًا) */}
-        {cameraOpen && (
+        {/* ✅ التعتيم الخارجي مع فتحة بيضاوية شفافة + حدّ البيضاوي (لا دائرة داخلية) */}
+        {cameraOpen && <OvalMaskOverlay />}
+
+        {/* العدّ التنازلي (إن وجد) */}
+        {cameraOpen && countdown !== null && (
           <div
             style={{
               position: "absolute",
-              inset: 0,
-              display: "grid",
-              placeItems: "center",
+              bottom: "15vh",
+              left: "50%",
+              transform: "translateX(-50%)",
+              fontSize: "clamp(24px, 6vw, 56px)",
+              fontWeight: 800,
+              color: "#0fd86e",
+              textShadow: "0 4px 24px rgba(0,0,0,0.8)",
+              zIndex: 12,
               pointerEvents: "none",
-              zIndex: 11,
             }}
           >
-            <div
-              style={{
-                width: "min(70vw, 60vh)",
-                height: "min(90vw, 80vh)",
-                borderRadius: "50% / 60%",
-                boxShadow:
-                  "0 0 0 2px #ffffff66 inset, 0 0 0 200vmax rgba(0,0,0,0.35)",
-                backdropFilter: "blur(0.5px)",
-              }}
-            />
-            {countdown !== null && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "15vh",
-                  fontSize: "clamp(24px, 6vw, 56px)",
-                  fontWeight: 800,
-                  color: "#0fd86e",
-                  textShadow: "0 4px 24px rgba(0,0,0,0.8)",
-                }}
-              >
-                {countdown > 0 ? countdown : "✓"}
-              </div>
-            )}
+            {countdown > 0 ? countdown : "✓"}
           </div>
         )}
 
